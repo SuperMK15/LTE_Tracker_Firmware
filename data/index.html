@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>WARG LTE Tracker</title>
+    <link rel="stylesheet" href="/style.css">
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="eyebrow">LOCAL DEVICE STATUS</p>
+        <h1>LTE Tracker</h1>
+      </header>
+      <section class="card">
+        <h2>GNSS</h2>
+        <dl>
+          <dt>Fix</dt><dd id="fix">Waiting</dd>
+          <dt>Coordinates</dt><dd id="coordinates">—</dd>
+          <dt>GNSS time</dt><dd id="gnss-time">—</dd>
+          <dt>M10 NMEA bytes</dt><dd id="gps-bytes">—</dd>
+          <dt>Valid NMEA checksums</dt><dd id="gps-valid">—</dd>
+          <dt>NMEA checksum errors</dt><dd id="gps-errors">—</dd>
+          <dt>Altitude</dt><dd id="altitude">—</dd>
+          <dt>Speed</dt><dd id="speed">—</dd>
+        </dl>
+      </section>
+      <section class="card">
+        <h2>Connectivity</h2>
+        <dl>
+          <dt>Modem</dt><dd id="modem">—</dd>
+          <dt>LTE registered</dt><dd id="network">—</dd>
+          <dt>Packet data</dt><dd id="packet-data">—</dd>
+          <dt>SD card</dt><dd id="sd">—</dd>
+          <dt>Last upload</dt><dd id="upload">—</dd>
+        </dl>
+      </section>
+      <section class="card">
+        <h2>Session</h2>
+        <dl>
+          <dt>Session ID</dt><dd id="session">—</dd>
+          <dt>Sample</dt><dd id="sequence">—</dd>
+          <dt>Uploaded</dt><dd id="uploaded">—</dd>
+          <dt>Queued</dt><dd id="queued">—</dd>
+          <dt>Dropped from queue</dt><dd id="dropped">—</dd>
+          <dt>Missed sample intervals</dt><dd id="missed">—</dd>
+        </dl>
+      </section>
+      <section class="card">
+        <h2>Upload test</h2>
+        <p>Queue a fake coordinate (47.6553, -122.3080) for Supabase. It is
+          marked with a negative sequence number and is not written to the SD
+          card.</p>
+        <button id="test-location" type="button">Send test coordinate</button>
+        <p id="test-result" role="status" aria-live="polite"></p>
+      </section>
+      <p class="footnote" id="updated">Waiting for device data…</p>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>

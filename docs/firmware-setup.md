@@ -2,22 +2,31 @@
 
 ## Hardware and behavior
 
-The firmware targets the ESP32-C3-MINI-1 and SIM7080G shown in
-`schematic.pdf`. It polls `AT+CGNSINF` once per second, logs every sample to a
-session-specific CSV when a card is present, and posts each sample to
-Supabase over the modem's LTE data connection. GNSS coordinates are null until
-the modem has a fix. Each boot creates a new UUID session ID.
+The firmware targets the ESP32-C3-MINI-1, SIM7080G, and an external Holybro M10
+GNSS receiver. It reads NMEA from the M10 once per second, logs each sample to
+a session-specific CSV when a card is present, and posts samples to Supabase
+over the SIM7080G LTE data connection. The SIM7080G is used for cellular data
+only; GNSS is read from the separate M10 UART. Coordinates are null until the
+M10 has a fix. Each boot creates a new UUID session ID.
 
 The board pin assignments are in `include/BoardConfig.h`: modem UART RX/TX are
-GPIO20/21, modem PWRKEY is GPIO0, and the SD card SPI bus is GPIO6/7/2 with
-chip-select GPIO10 and card detect GPIO3. The card-detect input is treated as
-active-low.
+GPIO20/21, modem PWRKEY is GPIO0, M10 GPS-to-ESP RX is GPIO4, and ESP-to-GPS TX
+is GPIO5 (115200 baud). On the GPS-side connector labels, GPS RX is wired to
+GPIO4 and GPS TX to GPIO5; the ESP32 UART therefore uses RX=GPIO5 and TX=GPIO4.
+SD SPI uses SCK/MISO/MOSI GPIO6/2/7, chip-select GPIO10,
+and active-low card detect GPIO3. The GPS UART wiring is shown on sheet 2 of
+`schematic.pdf`.
 
 The local debug access point serves `data/` from LittleFS. Its SSID ends with
 the last four bytes of the ESP32 Wi-Fi MAC address, so it remains the same
 across reboots. Its password and URL are printed to the serial monitor. The
 page shows GNSS, cellular, SD, session, and last-upload status. Telemetry still
 uses a new session UUID for each power cycle.
+
+The access point and HTTP server start before modem initialization. M10 NMEA
+sampling and SD logging run independently from the SIM7080G cellular and
+Supabase-upload task. Thus LTE socket operations no longer occupy the GPS
+UART or prevent GNSS sampling.
 
 ## Configure and build
 
@@ -37,10 +46,10 @@ Upload the filesystem image after changing any files in `data/`.
 
 The serial console uses the ESP32-C3's native USB Serial/JTAG connection at
 115200 baud. Open the monitor before resetting the board to capture startup
-diagnostics. If the log reports no SIM7080G AT response, cellular registration
-has not started yet: check modem supply, the PWRKEY circuit, and UART
-connections. The firmware probes common UART baud rates; an APN or SIM-plan
-issue can only be diagnosed after the modem answers AT.
+diagnostics. The SIM7080G UART is configured for 115200 baud. If the log
+reports no SIM7080G AT response, check modem supply, the PWRKEY circuit, UART
+connections, and the modem's configured baud rate before diagnosing APN or
+SIM-plan issues.
 
 Supabase requests use HTTPS/TLS encryption without validating the server's
 certificate. This avoids installing a CA on the SIM7080G, but leaves the
@@ -81,7 +90,19 @@ create policy "device telemetry insert"
 The REST endpoint is `/rest/v1/tracker_locations`; the firmware sends one
 insert per sample, including samples without a GNSS fix. LTE registration,
 signal conditions, and HTTP latency can delay samples; the SD CSV is the local
-record when available.
+record when available. The firmware uploads one queued row per Supabase request
+at up to one request per second and retries failed requests with exponential
+backoff. GNSS uses its own M10 UART and task, so SIM7080G LTE operations do not
+block GPS reads. The debug page reports missed sample intervals and M10 NMEA
+byte/checksum counts to help distinguish a missing UART signal from a receiver
+that has not acquired a fix. Up to 32 unsent samples are queued in RAM; if that
+queue fills, its oldest entries are discarded and the dropped-sample counter
+increases. SD logging is independent of the upload queue.
+
+The debug page's **Send test coordinate** button queues a fake coordinate
+(47.6553, -122.3080) for the same Supabase table. Test rows use negative
+sequence numbers, are not written to the SD card, and should be excluded from
+real location analysis.
 
 The debug page distinguishes cellular registration from an active packet-data
 session. SIM7080G `CGATT` reports cellular packet attachment, not whether the
@@ -93,4 +114,5 @@ and activates the PDP context when needed.
 Each power cycle creates `/track_<session-id>.csv`, with columns for session
 ID, sample sequence, uptime, GNSS UTC, fix state, coordinates, altitude, and
 speed. The SD card is mounted over SPI; removal pauses logging, and insertion
-resumes it.
+resumes it. NMEA sampling runs on a separate FreeRTOS task from modem
+initialization, network reconnects, and HTTPS uploads.
