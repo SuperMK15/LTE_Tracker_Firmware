@@ -9,8 +9,8 @@ class SupabaseClient {
  public:
   explicit SupabaseClient(ModemDriver& modem);
 
-  bool publish(const LocationSample& sample, const String& sessionId,
-               int& httpStatus);
+  bool publish(const LocationSample* samples, size_t count,
+               const String& sessionId, int& httpStatus);
 
  private:
   ModemDriver& modem_;

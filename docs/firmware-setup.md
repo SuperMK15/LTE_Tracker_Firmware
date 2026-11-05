@@ -87,12 +87,14 @@ create policy "device telemetry insert"
   with check (true);
 ```
 
-The REST endpoint is `/rest/v1/tracker_locations`; the firmware sends one
-insert per sample, including samples without a GNSS fix. LTE registration,
+The REST endpoint is `/rest/v1/tracker_locations`; the firmware sends all
+currently queued samples as one JSON-array insert, including samples without a
+GNSS fix. LTE registration,
 signal conditions, and HTTP latency can delay samples; the SD CSV is the local
-record when available. The firmware uploads one queued row per Supabase request
-at up to one request per second and retries failed requests with exponential
-backoff. GNSS uses its own M10 UART and task, so SIM7080G LTE operations do not
+record when available. After a successful upload, the firmware removes those
+samples from its RAM queue; samples collected during the request are sent in
+the next request. Failed requests are retried with exponential backoff. GNSS
+uses its own M10 UART and task, so SIM7080G LTE operations do not
 block GPS reads. The debug page reports missed sample intervals and M10 NMEA
 byte/checksum counts to help distinguish a missing UART signal from a receiver
 that has not acquired a fix. Up to 32 unsent samples are queued in RAM; if that

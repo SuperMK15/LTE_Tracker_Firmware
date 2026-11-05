@@ -109,14 +109,31 @@ void removeUploadedSamples(const LocationSample* batch, size_t count) {
   if (xSemaphoreTake(stateMutex, portMAX_DELAY) != pdTRUE) {
     return;
   }
-  for (size_t i = 0; i < count && pendingCount > 0; ++i) {
-    if (pendingSamples[pendingHead].sequence != batch[i].sequence) {
-      Serial.println("Telemetry queue changed before upload acknowledgement.");
-      break;
+
+  const size_t queuedBeforeAcknowledgement = pendingCount;
+  size_t retainedCount = 0;
+  for (size_t i = 0; i < queuedBeforeAcknowledgement; ++i) {
+    const size_t sourceIndex =
+        (pendingHead + i) % BoardConfig::PENDING_SAMPLE_CAPACITY;
+    const LocationSample& queued = pendingSamples[sourceIndex];
+    bool wasUploaded = false;
+    for (size_t j = 0; j < count; ++j) {
+      if (queued.sequence == batch[j].sequence &&
+          queued.elapsedMs == batch[j].elapsedMs) {
+        wasUploaded = true;
+        break;
+      }
     }
-    pendingHead = (pendingHead + 1) % BoardConfig::PENDING_SAMPLE_CAPACITY;
-    --pendingCount;
+    if (!wasUploaded) {
+      const size_t destinationIndex =
+          (pendingHead + retainedCount) % BoardConfig::PENDING_SAMPLE_CAPACITY;
+      if (destinationIndex != sourceIndex) {
+        pendingSamples[destinationIndex] = queued;
+      }
+      ++retainedCount;
+    }
   }
+  pendingCount = retainedCount;
   status.queuedSamples = pendingCount;
   if (count > 0) {
     status.uploadedSequence = batch[count - 1].sequence;
@@ -219,14 +236,16 @@ void serviceUpload(AppStatus& networkStatus, uint32_t& nextUploadAt,
     return;
   }
 
-  LocationSample sample;
-  if (copyPendingBatch(&sample, 1) == 0) {
+  LocationSample batch[BoardConfig::PENDING_SAMPLE_CAPACITY];
+  const size_t batchCount =
+      copyPendingBatch(batch, BoardConfig::PENDING_SAMPLE_CAPACITY);
+  if (batchCount == 0) {
     return;
   }
 
   int httpStatus = 0;
-  if (supabase.publish(sample, networkStatus.sessionId, httpStatus)) {
-    removeUploadedSamples(&sample, 1);
+  if (supabase.publish(batch, batchCount, networkStatus.sessionId, httpStatus)) {
+    removeUploadedSamples(batch, batchCount);
     failureCount = 0;
     nextUploadAt = millis() + BoardConfig::UPLOAD_INTERVAL_MS;
   } else {
@@ -250,7 +269,7 @@ void serviceUpload(AppStatus& networkStatus, uint32_t& nextUploadAt,
       ++failureCount;
     }
     nextUploadAt = millis() + retryDelay;
-    Serial.print("Retrying Supabase upload in ");
+    Serial.print("Retrying Supabase batch in ");
     Serial.print(retryDelay);
     Serial.println(" ms.");
   }
