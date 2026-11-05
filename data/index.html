@@ -32,7 +32,7 @@
           <dt>LTE registered</dt><dd id="network">—</dd>
           <dt>Packet data</dt><dd id="packet-data">—</dd>
           <dt>SD card</dt><dd id="sd">—</dd>
-          <dt>Last upload</dt><dd id="upload">—</dd>
+          <dt>Last MQTT publish</dt><dd id="upload">—</dd>
         </dl>
       </section>
       <section class="card">
@@ -40,17 +40,17 @@
         <dl>
           <dt>Session ID</dt><dd id="session">—</dd>
           <dt>Sample</dt><dd id="sequence">—</dd>
-          <dt>Uploaded</dt><dd id="uploaded">—</dd>
+          <dt>Broker acknowledged</dt><dd id="uploaded">—</dd>
           <dt>Queued</dt><dd id="queued">—</dd>
           <dt>Dropped from queue</dt><dd id="dropped">—</dd>
           <dt>Missed sample intervals</dt><dd id="missed">—</dd>
         </dl>
       </section>
       <section class="card">
-        <h2>Upload test</h2>
-        <p>Queue a fake coordinate (47.6553, -122.3080) for Supabase. It is
-          marked with a negative sequence number and is not written to the SD
-          card.</p>
+        <h2>MQTT publish test</h2>
+        <p>Publish a fake coordinate (47.6553, -122.3080) to the public MQTT
+          broker. It is marked with a negative sequence number and is not
+          written to the SD card.</p>
         <button id="test-location" type="button">Send test coordinate</button>
         <p id="test-result" role="status" aria-live="polite"></p>
       </section>

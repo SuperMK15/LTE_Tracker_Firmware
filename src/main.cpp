@@ -10,7 +10,7 @@
 #include "GnssDriver.h"
 #include "ModemDriver.h"
 #include "SDLogger.h"
-#include "SupabaseClient.h"
+#include "MqttPublisher.h"
 #include "Telemetry.h"
 
 namespace {
@@ -18,7 +18,7 @@ ModemDriver modem;
 GnssDriver gnss;
 SDLogger sdLogger;
 DebugServer debugServer;
-SupabaseClient supabase(modem);
+MqttPublisher mqttPublisher(modem);
 AppStatus status;
 SemaphoreHandle_t stateMutex = nullptr;
 QueueHandle_t testQueue = nullptr;
@@ -80,9 +80,11 @@ void enqueueSample(const LocationSample& sample) {
     return;
   }
   if (pendingCount == BoardConfig::PENDING_SAMPLE_CAPACITY) {
-    pendingHead = (pendingHead + 1) % BoardConfig::PENDING_SAMPLE_CAPACITY;
-    --pendingCount;
     ++status.droppedSamples;
+    Serial.print("Telemetry RAM queue full; new sample dropped. Total: ");
+    Serial.println(status.droppedSamples);
+    xSemaphoreGive(stateMutex);
+    return;
   }
   const size_t tail =
       (pendingHead + pendingCount) % BoardConfig::PENDING_SAMPLE_CAPACITY;
@@ -139,9 +141,9 @@ void removeUploadedSamples(const LocationSample* batch, size_t count) {
     status.uploadedSequence = batch[count - 1].sequence;
     status.lastUpload =
         batch[count - 1].testSample
-            ? "Test coordinate uploaded (sequence " +
-                  String(batch[count - 1].sequence) + ")"
-            : "Uploaded through sequence " +
+            ? "MQTT broker acknowledged test sequence " +
+                  String(batch[count - 1].sequence)
+            : "MQTT broker acknowledged through sequence " +
                   String(batch[count - 1].sequence);
   }
   xSemaphoreGive(stateMutex);
@@ -236,26 +238,17 @@ void serviceUpload(AppStatus& networkStatus, uint32_t& nextUploadAt,
     return;
   }
 
-  LocationSample batch[BoardConfig::PENDING_SAMPLE_CAPACITY];
-  const size_t batchCount =
-      copyPendingBatch(batch, BoardConfig::PENDING_SAMPLE_CAPACITY);
-  if (batchCount == 0) {
+  LocationSample sample;
+  if (copyPendingBatch(&sample, 1) == 0) {
     return;
   }
 
-  int httpStatus = 0;
-  if (supabase.publish(batch, batchCount, networkStatus.sessionId, httpStatus)) {
-    removeUploadedSamples(batch, batchCount);
+  if (mqttPublisher.publish(sample, networkStatus.sessionId)) {
+    removeUploadedSamples(&sample, 1);
     failureCount = 0;
-    nextUploadAt = millis() + BoardConfig::UPLOAD_INTERVAL_MS;
+    nextUploadAt = millis();
   } else {
-    const String message =
-        httpStatus == 0
-            ? "TLS/network upload failed; retry scheduled"
-            : httpStatus < 0
-                  ? "No valid HTTP response; retry scheduled"
-                  : "Upload failed with HTTP " + String(httpStatus) +
-                        "; retry scheduled";
+    const String message = "MQTT publish failed; retry scheduled";
     networkStatus.lastUpload = message;
     setLastUpload(message);
     networkStatus.packetDataConnected = modem.isPacketDataConnected();
@@ -269,7 +262,7 @@ void serviceUpload(AppStatus& networkStatus, uint32_t& nextUploadAt,
       ++failureCount;
     }
     nextUploadAt = millis() + retryDelay;
-    Serial.print("Retrying Supabase batch in ");
+    Serial.print("Retrying MQTT publish in ");
     Serial.print(retryDelay);
     Serial.println(" ms.");
   }
@@ -306,12 +299,17 @@ void telemetryTask(void*) {
 
   uint32_t nextCellularAttemptAt = millis();
   uint32_t nextUploadAt = millis() + BoardConfig::UPLOAD_INTERVAL_MS;
+  uint32_t nextMqttPollAt = millis();
   int64_t nextTestSequence = -1;
   uint8_t uploadFailureCount = 0;
 
   for (;;) {
     enqueueTestLocation(nextTestSequence);
     serviceCellular(networkStatus, nextCellularAttemptAt);
+    if (static_cast<int32_t>(millis() - nextMqttPollAt) >= 0) {
+      nextMqttPollAt = millis() + BoardConfig::MQTT_POLL_INTERVAL_MS;
+      mqttPublisher.poll();
+    }
     serviceUpload(networkStatus, nextUploadAt, uploadFailureCount);
     vTaskDelay(pdMS_TO_TICKS(2));
   }

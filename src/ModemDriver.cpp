@@ -4,7 +4,10 @@
 #include "secrets.h"
 
 ModemDriver::ModemDriver()
-    : serial_(1), modem_(serial_), secureClient_(modem_) {}
+    : serial_(1),
+      modem_(serial_),
+      secureClient_(modem_),
+      mqttClient_(modem_) {}
 
 bool ModemDriver::powerOn() {
   pinMode(BoardConfig::MODEM_PWRKEY, OUTPUT);
@@ -68,4 +71,8 @@ bool ModemDriver::ensureDataConnection() {
 
 TinyGsmClientSecure& ModemDriver::secureClient() {
   return secureClient_;
+}
+
+MqttTcpClient& ModemDriver::mqttClient() {
+  return mqttClient_;
 }

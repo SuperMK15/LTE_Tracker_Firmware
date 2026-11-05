@@ -55,7 +55,7 @@ document.getElementById("test-location").addEventListener("click", async (event)
       throw new Error(payload.error || `HTTP ${response.status}`);
     }
     result.textContent =
-      "Test coordinate queued. Check Last upload for its result.";
+      "Test coordinate queued. Check Last MQTT publish for its result.";
   } catch (error) {
     result.textContent = `Unable to queue test coordinate: ${error.message}`;
   } finally {
